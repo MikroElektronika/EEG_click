@@ -1,0 +1,5 @@
+unit Click_EEG_config;
+
+uses Click_EEG_types;
+
+end.

@@ -1,0 +1,118 @@
+{
+Example for EEG Click
+
+    Date          : Oct 2018.
+    Author        : Nemanja Medakovic
+
+Test configuration PIC32 :
+    
+    MCU                : P32MX795F512L
+    Dev. Board         : EasyPIC Fusion v7
+    PIC32 Compiler ver : v4.0.0.0
+
+---
+
+Description :
+
+The application is composed of three sections :
+
+- System Initialization - Initializes peripherals and pins.
+- Application Initialization - Initializes ADC and timer interrupt function.
+- Application Task - (code snippet) - Reads ADC value and sends results on serial plotter 
+  every time when interrupt occurres.
+
+Additional Functions :
+
+- void initTimer1() - Initializes interrupt time to 5ms.
+
+}
+program Click_EEG_PIC32;
+
+uses Click_EEG_types, Click_EEG_config;
+
+const
+    time_ms : uint16_t = 5; 
+    
+var
+    interrCnt : uint32_t; 
+    interrFlag : uint8_t; 
+    readADC : uint16_t; 
+    timeRead : uint32_t; 
+    text : array[50] of char; 
+    
+procedure initTimer1(); 
+begin
+    T1CON := 0x8010; 
+    T1IP0_bit := 1; 
+    T1IP1_bit := 1; 
+    T1IP2_bit := 1; 
+    T1IF_bit := 0; 
+    T1IE_bit := 1; 
+    PR1 := 50000; 
+    TMR1 := 0; 
+end;
+
+procedure plotRes(plotData : uint16_t; plotTime : uint32_t); 
+begin
+    WordToStr(plotData, text); 
+    mikrobus_logWrite(text, _LOG_TEXT); 
+    mikrobus_logWrite(',', _LOG_TEXT); 
+    LongWordToStr(plotTime, text); 
+    mikrobus_logWrite(text, _LOG_LINE); 
+end;
+
+procedure systemInit(); 
+begin
+    mikrobus_gpioInit(_MIKROBUS1, _MIKROBUS_AN_PIN, _GPIO_INPUT); 
+    mikrobus_logInit(_LOG_USBUART_A, 115200); 
+    Delay_ms(200); 
+end;
+
+procedure applicationInit(); 
+begin
+    eeg_gpioDriverInit(T_EEG_P(@_MIKROBUS1_GPIO)); 
+    Delay_ms(200); 
+    ADC1_Init(); 
+    Delay_ms(200); 
+    initTimer1(); 
+    interrFlag := 0; 
+    interrCnt := 0; 
+    EnableInterrupts(); 
+end;
+
+procedure applicationTask(); 
+begin
+    if (interrFlag = 1) then 
+    begin
+        interrFlag := 0; 
+        DisableInterrupts(); 
+        readADC := ADC1_Get_Sample(8); 
+        timeRead := interrCnt * time_ms; 
+        plotRes(readADC, timeRead); 
+        EnableInterrupts(); 
+    end; 
+end;
+
+procedure Timer_interrupt(); iv IVT_TIMER_1; ilevel 7; ics ICS_SRS; 
+begin
+    T1IF_bit := 0; 
+    interrFlag := 1; 
+    if (interrCnt = 0x33333333) then 
+    begin
+        interrCnt := 0; 
+    end
+    else 
+    begin
+        inc(interrCnt);
+    end;
+end;
+
+begin
+
+    systemInit(); 
+    applicationInit(); 
+    while (1) do 
+    begin 
+        applicationTask(); 
+    end;
+end.

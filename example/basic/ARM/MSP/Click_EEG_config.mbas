@@ -1,0 +1,4 @@
+module Click_EEG_config
+
+include Click_EEG_types
+end.

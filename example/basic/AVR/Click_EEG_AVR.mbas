@@ -1,0 +1,101 @@
+'
+'Example for EEG Click
+'
+'    Date          : Oct 2018.
+'    Author        : Nemanja Medakovic
+'
+'Test configuration AVR :
+'    
+'    MCU              : ATMEGA32
+'    Dev. Board       : EasyAVR v7 
+'    AVR Compiler ver : v7.0.1.0
+'
+'---
+'
+'Description :
+'
+'The application is composed of three sections :
+'
+'- System Initialization - Initializes peripherals and pins.
+'- Application Initialization - Initializes ADC and timer interrupt function.
+'- Application Task - (code snippet) - Reads ADC value and sends results on serial plotter 
+'  every time when interrupt occurres.
+'
+'Additional Functions :
+'
+'- void initTimer1() - Initializes interrupt time to 5ms.
+'
+'
+program Click_EEG_AVR
+
+include Click_EEG_types
+include Click_EEG_config
+const
+    time_ms as uint16_t = 5
+    
+dim
+    interrCnt as uint32_t 
+    interrFlag as uint8_t 
+    readADC as uint16_t 
+    timeRead as uint32_t 
+    text as char[50] 
+    
+sub procedure initTimer1() 
+    SREG_I_bit = 1 
+    TCCR1A = 0x80 
+    TCCR1B = 0x09 
+    OCR1AH = 0x9C 
+    OCR1AL = 0x3F 
+    OCIE1A_bit = 1 
+end sub
+
+sub procedure plotRes(dim plotData as uint16_t, dim plotTime as uint32_t) 
+    WordToStr(plotData, text) 
+    mikrobus_logWrite(text, _LOG_TEXT) 
+    mikrobus_logWrite(",", _LOG_TEXT) 
+    LongWordToStr(plotTime, text) 
+    mikrobus_logWrite(text, _LOG_LINE) 
+end sub
+
+sub procedure systemInit() 
+    mikrobus_gpioInit(_MIKROBUS1, _MIKROBUS_AN_PIN, _GPIO_INPUT) 
+    mikrobus_logInit(_LOG_USBUART, 115200) 
+    Delay_ms(200) 
+end sub
+
+sub procedure applicationInit() 
+    eeg_gpioDriverInit(T_EEG_P(@_MIKROBUS1_GPIO)) 
+    Delay_ms(200) 
+    ADC_Init() 
+    Delay_ms(200) 
+    initTimer1() 
+    interrFlag = 0 
+    interrCnt = 0 
+end sub
+
+sub procedure applicationTask() 
+    if (interrFlag = 1) then 
+        interrFlag = 0 
+        readADC = ADC_Get_Sample(7) 
+        timeRead = interrCnt * time_ms 
+        plotRes(readADC, timeRead) 
+    end if
+end sub
+
+sub procedure Timer_interrupt() org IVT_ADDR_TIMER1_COMPA
+    interrFlag = 1 
+    if (interrCnt = 0x33333333) then 
+        interrCnt = 0 
+    else 
+        inc(interrCnt)
+    end if
+end sub
+
+main :
+
+    systemInit() 
+    applicationInit() 
+    while (1) 
+        applicationTask() 
+    wend
+end.

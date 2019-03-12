@@ -1,0 +1,111 @@
+'
+'Example for EEG Click
+'
+'    Date          : Oct 2018.
+'    Author        : Nemanja Medakovic
+'
+'Test configuration FT90x :
+'    
+'    MCU                : FT900
+'    Dev. Board         : EasyFT90x v7 
+'    FT90x Compiler ver : v2.3.0.0
+'
+'---
+'
+'Description :
+'
+'The application is composed of three sections :
+'
+'- System Initialization - Initializes peripherals and pins.
+'- Application Initialization - Initializes ADC and timer interrupt function.
+'- Application Task - (code snippet) - Reads ADC value and sends results on serial plotter 
+'  every time when interrupt occurres.
+'
+'Additional Functions :
+'
+'- void initTimerA() - Initializes interrupt time to 5ms.
+'
+'
+program Click_EEG_FT90x
+
+include Click_EEG_types
+include Click_EEG_config
+const
+    time_ms as uint16_t = 5
+    
+dim
+    interrCnt as uint32_t 
+    interrFlag as uint8_t 
+    readADC as uint16_t 
+    timeRead as uint32_t 
+    text as char[50] 
+    
+sub procedure initTimerA() 
+    TIMER_CONTROL_0 = 2 
+    TIMER_SELECT = 0 
+    TIMER_PRESC_LS = 36 
+    TIMER_PRESC_MS = 244 
+    TIMER_WRITE_LS = 7 
+    TIMER_WRITE_MS = 0 
+    TIMER_CONTROL_3 = 0 
+    TIMER_CONTROL_4 = TIMER_CONTROL_4 or 17 
+    TIMER_CONTROL_2 = TIMER_CONTROL_2 or 16 
+    TIMER_INT = TIMER_INT or 2 
+    TIMER_CONTROL_1 = TIMER_CONTROL_1 or 1 
+    IRQ_CTRL = IRQ_CTRL and not (uint32_t(1) << GLOBAL_INTERRUPT_MASK) 
+end sub
+
+sub procedure plotRes(dim plotData as uint16_t, dim plotTime as uint32_t) 
+    WordToStr(plotData, text) 
+    mikrobus_logWrite(text, _LOG_TEXT) 
+    mikrobus_logWrite(",", _LOG_TEXT) 
+    LongWordToStr(plotTime, text) 
+    mikrobus_logWrite(text, _LOG_LINE) 
+end sub
+
+sub procedure systemInit() 
+    mikrobus_gpioInit(_MIKROBUS1, _MIKROBUS_AN_PIN, _GPIO_INPUT) 
+    mikrobus_logInit(_LOG_USBUART, 115200) 
+    Delay_ms(200) 
+end sub
+
+sub procedure applicationInit() 
+    eeg_gpioDriverInit(T_EEG_P(@_MIKROBUS1_GPIO)) 
+    Delay_ms(200) 
+    ADC_Init_Advanced(_ADC_MODE_SINGLE) 
+    ADC_Set_Input_Channel(_ADC_CHANNEL_4) 
+    Delay_ms(200) 
+    initTimerA() 
+    interrFlag = 0 
+    interrCnt = 0 
+end sub
+
+sub procedure applicationTask() 
+    if (interrFlag = 1) then 
+        interrFlag = 0 
+        readADC = ADC_Read(4) 
+        timeRead = interrCnt * time_ms 
+        plotRes(readADC, timeRead) 
+    end if
+end sub
+
+sub procedure Timer_interrupt() iv IVT_TIMERS_IRQ 
+    if (TIMER_INT_A_bit) then 
+        TIMER_INT = (TIMER_INT and 0xAA) or (1 << 0) 
+    end if
+    interrFlag = 1 
+    if (interrCnt = 0x33333333) then 
+        interrCnt = 0 
+    else 
+        inc(interrCnt)
+    end if
+end sub
+
+main :
+
+    systemInit() 
+    applicationInit() 
+    while (1) 
+        applicationTask() 
+    wend
+end.
